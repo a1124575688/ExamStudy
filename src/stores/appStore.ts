@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { StudyItem, ReviewTask, AppData, ReviewStatus } from '@/types';
 import { generateReviewTasks } from '@/utils/ebbinghaus';
-import { getToday } from '@/utils/date';
 
 const STORAGE_KEY = 'ebbinghaus-study-data';
 
@@ -170,6 +169,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     getTodayReviewItems: () => {
+      const { getToday } = require('@/utils/date');
       const today = getToday();
       const tasks = get().reviewTasks.filter(
         (task) => task.reviewDate === today && task.status === 'pending'

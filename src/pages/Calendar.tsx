@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { getMonthDays, getFirstDayOfMonth, getToday, parseDate } from '@/utils/date';
+import { getMonthDays, getFirstDayOfMonth, getToday } from '@/utils/date';
 import { getReviewStageLabel, getTaskStatusText } from '@/utils/ebbinghaus';
 import { ChevronLeft, ChevronRight, Circle } from 'lucide-react';
 
@@ -10,14 +10,39 @@ export default function Calendar() {
   const [month, setMonth] = useState(new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(today);
 
-  const getTasksForMonth = useAppStore((state) => state.getTasksForMonth);
-  const getTasksByDate = useAppStore((state) => state.getTasksByDate);
+  const studyItems = useAppStore((state) => state.studyItems);
+  const reviewTasks = useAppStore((state) => state.reviewTasks);
 
   const daysInMonth = getMonthDays(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
-  const counts = getTasksForMonth(year, month);
 
-  const selectedTasks = selectedDate ? getTasksByDate(selectedDate) : [];
+  const studyItemMap = useMemo(
+    () => new Map(studyItems.map((item) => [item.id, item])),
+    [studyItems]
+  );
+
+  const counts = useMemo(() => {
+    const result: Record<string, number> = {};
+    reviewTasks.forEach((task) => {
+      const date = new Date(task.reviewDate + 'T00:00:00');
+      if (date.getFullYear() === year && date.getMonth() === month) {
+        const day = String(date.getDate()).padStart(2, '0');
+        result[day] = (result[day] || 0) + 1;
+      }
+    });
+    return result;
+  }, [reviewTasks, year, month]);
+
+  const selectedTasks = useMemo(() => {
+    if (!selectedDate) return [];
+    return reviewTasks
+      .filter((task) => task.reviewDate === selectedDate)
+      .map((task) => {
+        const studyItem = studyItemMap.get(task.studyItemId);
+        return studyItem ? { task, studyItem } : null;
+      })
+      .filter(Boolean) as Array<{ task: typeof reviewTasks[0]; studyItem: typeof studyItems[0] }>;
+  }, [reviewTasks, studyItemMap, selectedDate]);
 
   const handlePrevMonth = () => {
     if (month === 0) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { getToday, getDayName } from '@/utils/date';
 import { getReviewStageLabel } from '@/utils/ebbinghaus';
@@ -6,12 +6,24 @@ import { Check, Circle, RotateCcw } from 'lucide-react';
 
 export default function Home() {
   const today = getToday();
-  const todayItems = useAppStore((state) => state.getTodayReviewItems());
+  const studyItems = useAppStore((state) => state.studyItems);
+  const reviewTasks = useAppStore((state) => state.reviewTasks);
   const complete = useAppStore((state) => state.completeReviewTask);
   const skip = useAppStore((state) => state.skipReviewTask);
   const reset = useAppStore((state) => state.resetReviewTask);
 
   const [completedIds, setCompletedIds] = useState<string[]>([]);
+
+  const todayItems = useMemo(() => {
+    const studyItemMap = new Map(studyItems.map((item) => [item.id, item]));
+    return reviewTasks
+      .filter((task) => task.reviewDate === today && task.status === 'pending')
+      .map((task) => {
+        const studyItem = studyItemMap.get(task.studyItemId);
+        return studyItem ? { task, studyItem } : null;
+      })
+      .filter(Boolean) as Array<{ task: typeof reviewTasks[0]; studyItem: typeof studyItems[0] }>;
+  }, [studyItems, reviewTasks, today]);
 
   const handleComplete = (taskId: string) => {
     complete(taskId);
