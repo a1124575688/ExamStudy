@@ -1,14 +1,20 @@
 import { create } from 'zustand';
 import type { StudyItem, ReviewTask, AppData, ReviewStatus } from '@/types';
 import { generateReviewTasks } from '@/utils/ebbinghaus';
+import { getToday } from '@/utils/date';
+import { loadFromGitHub, saveToGitHub, getFileSha } from '@/utils/githubSync';
 
 const STORAGE_KEY = 'ebbinghaus-study-data';
+const SYNC_KEY = 'ebbinghaus-last-sync';
 
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 interface AppState extends AppData {
+  syncStatus: 'idle' | 'loading' | 'saving' | 'error';
+  syncError: string | null;
+  lastSyncAt: string | null;
   addStudyItem: (item: Omit<StudyItem, 'id' | 'createdAt'>) => void;
   updateStudyItem: (id: string, item: Omit<StudyItem, 'id' | 'createdAt'>) => void;
   deleteStudyItem: (id: string) => void;
@@ -17,12 +23,14 @@ interface AppState extends AppData {
   resetReviewTask: (taskId: string) => void;
   exportData: () => AppData;
   importData: (data: AppData) => void;
+  syncFromGitHub: () => Promise<void>;
+  syncToGitHub: () => Promise<void>;
   getTodayReviewItems: () => Array<{ task: ReviewTask; studyItem: StudyItem }>;
   getTasksByDate: (date: string) => Array<{ task: ReviewTask; studyItem: StudyItem }>;
   getTasksForMonth: (year: number, month: number) => Record<string, number>;
 }
 
-function loadInitialData(): AppData {
+function loadLocalData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -38,8 +46,16 @@ function loadInitialData(): AppData {
   return { studyItems: [], reviewTasks: [] };
 }
 
+function loadLastSyncAt(): string | null {
+  try {
+    return localStorage.getItem(SYNC_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => {
-  const initialData = loadInitialData();
+  const initialData = loadLocalData();
 
   const persist = (next: AppData) => {
     try {
@@ -62,8 +78,25 @@ export const useAppStore = create<AppState>((set, get) => {
       .filter(Boolean) as Array<{ task: ReviewTask; studyItem: StudyItem }>;
   };
 
+  const syncToGitHub = async () => {
+    const data = { studyItems: get().studyItems, reviewTasks: get().reviewTasks };
+    try {
+      const sha = await getFileSha();
+      await saveToGitHub(data, sha || undefined);
+      const now = new Date().toISOString();
+      localStorage.setItem(SYNC_KEY, now);
+      set({ syncStatus: 'idle', syncError: null, lastSyncAt: now });
+    } catch (error) {
+      console.error('Failed to sync to GitHub:', error);
+      set({ syncStatus: 'error', syncError: (error as Error).message });
+    }
+  };
+
   return {
     ...initialData,
+    syncStatus: 'idle',
+    syncError: null,
+    lastSyncAt: loadLastSyncAt(),
 
     addStudyItem: (item) => {
       const newItem: StudyItem = {
@@ -80,6 +113,7 @@ export const useAppStore = create<AppState>((set, get) => {
         persist(next);
         return next;
       });
+      syncToGitHub();
     },
 
     updateStudyItem: (id, item) => {
@@ -105,6 +139,7 @@ export const useAppStore = create<AppState>((set, get) => {
         persist(next);
         return next;
       });
+      syncToGitHub();
     },
 
     deleteStudyItem: (id) => {
@@ -116,6 +151,7 @@ export const useAppStore = create<AppState>((set, get) => {
         persist(next);
         return next;
       });
+      syncToGitHub();
     },
 
     completeReviewTask: (taskId) => {
@@ -129,6 +165,7 @@ export const useAppStore = create<AppState>((set, get) => {
         persist(next);
         return next;
       });
+      syncToGitHub();
     },
 
     skipReviewTask: (taskId) => {
@@ -140,6 +177,7 @@ export const useAppStore = create<AppState>((set, get) => {
         persist(next);
         return next;
       });
+      syncToGitHub();
     },
 
     resetReviewTask: (taskId) => {
@@ -153,6 +191,7 @@ export const useAppStore = create<AppState>((set, get) => {
         persist(next);
         return next;
       });
+      syncToGitHub();
     },
 
     exportData: () => {
@@ -166,10 +205,36 @@ export const useAppStore = create<AppState>((set, get) => {
       };
       set(next);
       persist(next);
+      syncToGitHub();
+    },
+
+    syncFromGitHub: async () => {
+      set({ syncStatus: 'loading', syncError: null });
+      try {
+        const remote = await loadFromGitHub();
+        if (remote) {
+          const next = {
+            studyItems: remote.studyItems || [],
+            reviewTasks: remote.reviewTasks || [],
+          };
+          set(next);
+          persist(next);
+        }
+        const now = new Date().toISOString();
+        localStorage.setItem(SYNC_KEY, now);
+        set({ syncStatus: 'idle', syncError: null, lastSyncAt: now });
+      } catch (error) {
+        console.error('Failed to sync from GitHub:', error);
+        set({ syncStatus: 'error', syncError: (error as Error).message });
+      }
+    },
+
+    syncToGitHub: async () => {
+      set({ syncStatus: 'saving', syncError: null });
+      await syncToGitHub();
     },
 
     getTodayReviewItems: () => {
-      const { getToday } = require('@/utils/date');
       const today = getToday();
       const tasks = get().reviewTasks.filter(
         (task) => task.reviewDate === today && task.status === 'pending'
@@ -195,3 +260,8 @@ export const useAppStore = create<AppState>((set, get) => {
     },
   };
 });
+
+// 应用启动时自动从 GitHub 拉取数据
+setTimeout(() => {
+  useAppStore.getState().syncFromGitHub();
+}, 0);
