@@ -3,9 +3,8 @@ const GITHUB_CONFIG = {
   repo: "ExamStudy",
   path: "data.json",
   branch: "main",
-  // 请在这里填入你的 GitHub Personal Access Token
-  // 注意：纯前端项目无法隐藏此 token，请确保该 token 只拥有此仓库的读写权限
-  token: "",
+  // 从构建环境变量读取，避免把 token 提交到仓库
+  token: import.meta.env.VITE_GITHUB_TOKEN || "",
 };
 
 export default GITHUB_CONFIG;
