@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:study-system.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.community.dialect.SQLiteDialect
+        format_sql: true
+    show-sql: true
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.example.examstudy: DEBUG
+    org.hibernate.SQL: DEBUG

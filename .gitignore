@@ -8,13 +8,20 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+dist.zip
 dist
 dist-ssr
 *.local
 
-# Secrets
-.env
-.env.local
+# Backend build artifacts & local db
+backend/target
+backend/*.db
+backend/*.db-journal
+backend/.idea
+backend/.mvn
+backend/mvnw
+backend/mvnw.cmd
+
 
 # Editor directories and files
 .vscode/*
